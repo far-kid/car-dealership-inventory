@@ -24,9 +24,13 @@ def test_create_schema_is_idempotent(database_url):
 
 
 def test_users_role_is_limited_to_user_or_admin(client, database_url):
-    with pytest.raises(psycopg.errors.CheckViolation):
+    try:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            with psycopg.connect(database_url) as connection:
+                connection.execute(
+                    "INSERT INTO users (id, email, password_hash, role) "
+                    "VALUES (gen_random_uuid(), 'bad-role@example.com', 'x', 'superuser')"
+                )
+    finally:
         with psycopg.connect(database_url) as connection:
-            connection.execute(
-                "INSERT INTO users (id, email, password_hash, role) "
-                "VALUES (gen_random_uuid(), 'bad-role@example.com', 'x', 'superuser')"
-            )
+            connection.execute("DELETE FROM users WHERE email = 'bad-role@example.com'")

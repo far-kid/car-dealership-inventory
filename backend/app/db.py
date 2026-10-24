@@ -10,6 +10,14 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Tables created before this check existed won't get it from CREATE TABLE IF NOT EXISTS.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check') THEN
+        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'));
+    END IF;
+END $$;
 """
 
 
