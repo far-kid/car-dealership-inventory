@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.auth.auth import router as auth_router
+from app.routers.auth import router as auth_router
 from app.db import create_schema
-from app.vehicles import router as vehicles_router
+from app.routers.vehicles import router as vehicles_router
 
 
 @asynccontextmanager

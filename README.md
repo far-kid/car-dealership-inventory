@@ -9,8 +9,12 @@ A full-stack inventory system for a car dealership. Users can register and log i
 ## Project structure
 
 ```
-backend/    FastAPI app (app/) and tests (tests/)
-frontend/   React SPA (coming soon)
+backend/app/routers/       HTTP endpoints and dependencies
+backend/app/services/      Business rules
+backend/app/repositories/  PostgreSQL queries
+backend/app/schemas/       Request and response models
+backend/tests/             Backend tests
+frontend/                  React SPA (coming soon)
 ```
 
 ## Backend setup
@@ -37,11 +41,13 @@ createdb -U postgres car_dealership
 createdb -U postgres car_dealership_test
 ```
 
-Registration always creates a regular user. To create or promote an admin after the app has started once, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your shell, then run:
+Registration always creates a regular user. To create or promote the first admin, set `DATABASE_URL` and run this from `backend/`:
 
 ```bash
-python -c "import os; from app.admin import ensure_admin; ensure_admin(os.environ['DATABASE_URL'], os.environ['ADMIN_EMAIL'], os.environ['ADMIN_PASSWORD'])"
+python -m app.admin --email admin@example.com
 ```
+
+The command prompts for the admin password and creates the database tables if needed. For automation, set a password environment variable and pass its name with `--password-env`.
 
 The API allows `http://localhost:5173` by default. Set `CORS_ORIGINS` to a comma-separated list of allowed origins for another frontend.
 
@@ -70,6 +76,7 @@ Coming soon.
 | POST | `/api/vehicles` | Authenticated |
 | GET | `/api/vehicles` | Authenticated |
 | GET | `/api/vehicles/search` | Authenticated |
+| GET | `/api/vehicles/:id` | Authenticated |
 | PUT | `/api/vehicles/:id` | Authenticated |
 | DELETE | `/api/vehicles/:id` | Admin |
 | POST | `/api/vehicles/:id/purchase` | Authenticated |
