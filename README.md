@@ -37,6 +37,14 @@ createdb -U postgres car_dealership
 createdb -U postgres car_dealership_test
 ```
 
+Registration always creates a regular user. To create or promote an admin after the app has started once, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in your shell, then run:
+
+```bash
+python -c "import os; from app.admin import ensure_admin; ensure_admin(os.environ['DATABASE_URL'], os.environ['ADMIN_EMAIL'], os.environ['ADMIN_PASSWORD'])"
+```
+
+The API allows `http://localhost:5173` by default. Set `CORS_ORIGINS` to a comma-separated list of allowed origins for another frontend.
+
 ## Running tests
 
 ```bash
@@ -58,6 +66,7 @@ Coming soon.
 | --- | --- | --- |
 | POST | `/api/auth/register` | Public |
 | POST | `/api/auth/login` | Public |
+| GET | `/api/auth/me` | Authenticated |
 | POST | `/api/vehicles` | Authenticated |
 | GET | `/api/vehicles` | Authenticated |
 | GET | `/api/vehicles/search` | Authenticated |

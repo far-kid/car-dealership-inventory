@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from psycopg.rows import dict_row
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.auth.dependencies import require_admin, require_user
 
@@ -18,11 +18,16 @@ VEHICLE_COLUMNS = "id, make, model, category, price, quantity"
 
 
 class VehicleInput(BaseModel):
-    make: str = Field(min_length=1)
-    model: str = Field(min_length=1)
-    category: str = Field(min_length=1)
+    make: str = Field(min_length=1, max_length=100)
+    model: str = Field(min_length=1, max_length=100)
+    category: str = Field(min_length=1, max_length=100)
     price: int = Field(gt=0, strict=True)
     quantity: int = Field(ge=0, strict=True)
+
+    @field_validator("make", "model", "category", mode="before")
+    @classmethod
+    def trim_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 class VehicleResponse(VehicleInput):

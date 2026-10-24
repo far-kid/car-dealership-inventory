@@ -3,10 +3,11 @@
 from uuid import UUID, uuid4
 
 import psycopg
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from psycopg.errors import UniqueViolation
 
+from app.auth.dependencies import require_user
 from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -16,7 +17,7 @@ _DUMMY_HASH = hash_password("timing-equaliser-not-a-real-password")
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class LoginRequest(BaseModel):
@@ -32,6 +33,10 @@ class UserResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class CurrentUserResponse(UserResponse):
+    role: str
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -73,3 +78,19 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     return TokenResponse(access_token=create_access_token(str(user[0]), user[2], secret_key))
+
+
+@router.get("/me", response_model=CurrentUserResponse)
+def me(request: Request, claims: dict = Depends(require_user)) -> CurrentUserResponse:
+    try:
+        user_id = UUID(claims["sub"])
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=401, detail="Invalid access token") from exc
+
+    with psycopg.connect(request.app.state.database_url) as connection:
+        user = connection.execute(
+            "SELECT id, email, role FROM users WHERE id = %s", (user_id,)
+        ).fetchone()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    return CurrentUserResponse(id=user[0], email=user[1], role=user[2])
