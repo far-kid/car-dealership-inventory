@@ -12,7 +12,7 @@ from app.security import (
     verify_password,
 )
 
-SECRET = "test-secret"
+SECRET = "test-secret-key-that-is-at-least-32-bytes-long"
 
 
 def test_verify_password_accepts_the_original_password():
@@ -39,6 +39,13 @@ def test_verify_password_returns_false_for_a_malformed_hash():
     assert verify_password("secret-password-123", "not-a-valid-hash") is False
 
 
+def test_verify_password_rejects_an_unknown_hash_algorithm():
+    pbkdf2_hash = hash_password("secret-password-123")
+    md5_labelled = "md5" + pbkdf2_hash.removeprefix("pbkdf2_sha256")
+
+    assert verify_password("secret-password-123", md5_labelled) is False
+
+
 def test_access_token_round_trips_subject_and_role():
     token = create_access_token("user-1", "admin", SECRET)
 
@@ -50,7 +57,7 @@ def test_access_token_round_trips_subject_and_role():
 
 
 def test_decode_rejects_a_token_signed_with_another_secret():
-    token = create_access_token("user-1", "user", "another-secret")
+    token = create_access_token("user-1", "user", "another-secret-that-is-also-32-bytes-long")
 
     with pytest.raises(InvalidTokenError):
         decode_access_token(token, SECRET)

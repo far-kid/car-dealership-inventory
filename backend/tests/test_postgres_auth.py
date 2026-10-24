@@ -7,6 +7,8 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import TEST_SECRET
+
 def test_registration_persists_user_in_postgres():
     from app.main import create_app
 
@@ -16,7 +18,7 @@ def test_registration_persists_user_in_postgres():
 
     email = f"buyer-{uuid4().hex}@example.com"
     try:
-        with TestClient(create_app(database_url=database_url, secret_key="test-secret")) as client:
+        with TestClient(create_app(database_url=database_url, secret_key=TEST_SECRET)) as client:
             response = client.post(
                 "/api/auth/register",
                 json={"email": email, "password": "secret-password-123"},
