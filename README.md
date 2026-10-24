@@ -22,7 +22,8 @@ cd backend
 python -m venv .venv
 # Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt
-cp .env.example .env   # then edit values
+# Set DATABASE_URL in your shell (see backend/.env.example).
+# PowerShell: $env:DATABASE_URL = "postgresql://postgres:<password>@localhost:5432/car_dealership"
 uvicorn app.main:app --reload
 ```
 
@@ -32,6 +33,8 @@ The API runs at http://localhost:8000 and interactive docs are at http://localho
 
 ```bash
 cd backend
+# Set TEST_DATABASE_URL to your dedicated PostgreSQL test database first.
+# PowerShell: $env:TEST_DATABASE_URL = "postgresql://postgres:<password>@localhost:5432/car_dealership_test"
 pytest
 ```
 
