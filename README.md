@@ -24,6 +24,7 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 # Set DATABASE_URL in your shell (see backend/.env.example).
 # PowerShell: $env:DATABASE_URL = "postgresql://postgres:<password>@localhost:5432/car_dealership"
+# PowerShell: $env:JWT_SECRET_KEY = "<random-secret-at-least-32-characters>"
 uvicorn app.main:app --reload
 ```
 
