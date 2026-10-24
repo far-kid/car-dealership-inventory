@@ -11,6 +11,8 @@ from app.security import create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+_DUMMY_HASH = hash_password("timing-equaliser-not-a-real-password")
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -64,7 +66,10 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
             (str(payload.email).lower(),),
         ).fetchone()
 
-    if user is None or not verify_password(payload.password, user[1]):
+    # Always run the slow hash so response time doesn't reveal unknown emails.
+    stored_hash = user[1] if user else _DUMMY_HASH
+    password_ok = verify_password(payload.password, stored_hash)
+    if user is None or not password_ok:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     return TokenResponse(access_token=create_access_token(str(user[0]), user[2], secret_key))

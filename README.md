@@ -30,14 +30,23 @@ uvicorn app.main:app --reload
 
 The API runs at http://localhost:8000 and interactive docs are at http://localhost:8000/docs.
 
+The app creates its tables on startup (`app/db.py`), so you only need to create the empty databases once:
+
+```bash
+createdb -U postgres car_dealership
+createdb -U postgres car_dealership_test
+```
+
 ## Running tests
 
 ```bash
 cd backend
-# Set TEST_DATABASE_URL to your dedicated PostgreSQL test database first.
+# Point TEST_DATABASE_URL at the dedicated test database (never your real one).
 # PowerShell: $env:TEST_DATABASE_URL = "postgresql://postgres:<password>@localhost:5432/car_dealership_test"
 pytest
 ```
+
+Unit tests (password hashing, JWT) always run. Tests that need PostgreSQL are skipped when `TEST_DATABASE_URL` is not set.
 
 ## Frontend setup
 
