@@ -10,6 +10,9 @@ export default defineConfig({
     proxy: { '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true } },
   },
   test: {
+    // Thread workers avoid child-process IPC stalls on Windows with Node 26.
+    pool: 'threads',
+    maxWorkers: 1,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
