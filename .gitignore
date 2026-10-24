@@ -21,3 +21,14 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local agent handoff (intentionally never committed)
+/FRONTEND_PROGRESS.md
+
+# Frontend verification artifacts
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.env.local
+.env.*.local
