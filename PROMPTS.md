@@ -158,3 +158,406 @@ To go Green, someone needs to:
 
 
 
+solve all the issue, including 1
+
+  Ran 2 shell commands
+
+Postgres needs a password I don't have. I'll write all the code first, then you'll only need to give the tests a connection string. Starting with the Red tests:
+
+● Write(backend\tests\conftest.py)
+Wrote 25 lines to backend\tests\conftest.py
+"""Shared fixtures for the PostgreSQL integration tests."""
+
+import os
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+
+ HS256 keys should be at least 32 bytes (RFC 7518 section 3.2).
+… +15 lines
+
+● Write(backend\tests\test_schema.py)
+Wrote 34 lines to backend\tests\test_schema.py
+"""The app must create its own tables so a fresh database works out of the box."""
+
+import psycopg
+
+from app.db import create_schema
+
+
+def test_startup_creates_the_users_table(client, database_url):
+    with psycopg.connect(database_url) as connection:
+        columns = {
+… +24 lines
+
+● Update(backend\tests\test_security.py)
+Added 1 line, removed 1 line
+    verify_password,
+)
+
+SECRET = "test-secret"
+SECRET = "test-secret-key-that-is-at-least-32-bytes-long"
+
+
+def test_verify_password_accepts_the_original_password():
+
+● Update(backend\tests\test_security.py)
+Added 7 lines
+    assert verify_password("secret-password-123", "not-a-valid-hash") is False
+
+
+def test_verify_password_rejects_an_unknown_hash_algorithm():
+    pbkdf2_hash = hash_password("secret-password-123")
+    md5_labelled = "md5" + pbkdf2_hash.removeprefix("pbkdf2_sha256")
+
+    assert verify_password("secret-password-123", md5_labelled) is False
+
+
+def test_access_token_round_trips_subject_and_role():
+    token = create_access_token("user-1", "admin", SECRET)
+
+
+● Update(backend\tests\test_security.py)
+Added 1 line, removed 1 line
+
+
+def test_decode_rejects_a_token_signed_with_another_secret():
+    token = create_access_token("user-1", "user", "another-secret")
+    token = create_access_token("user-1", "user", "another-secret-that-is-also-32-bytes-long")
+
+    with pytest.raises(InvalidTokenError):
+        decode_access_token(token, SECRET)
+
+● Write(backend\tests\test_schema.py)
+Added 3 lines, removed 5 lines
+"""The app must create its own tables so a fresh database works out of the box."""
+
+import psycopg
+import pytest
+
+from app.db import create_schema
+
+
+
+
+def test_users_role_is_limited_to_user_or_admin(client, database_url):
+    with psycopg.connect(database_url) as connection:
+        try:
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with psycopg.connect(database_url) as connection:
+            connection.execute(
+                "INSERT INTO users (id, email, password_hash, role) "
+                "VALUES (gen_random_uuid(), 'bad-role@example.com', 'x', 'superuser')"
+            )
+        except psycopg.errors.CheckViolation:
+            return
+    raise AssertionError("users.role accepted a value other than 'user' or 'admin'")
+
+● Update(backend\tests\test_login.py)
+Added 1 line, removed 17 lines
+"""Login endpoint tests against the PostgreSQL test database."""
+
+import os
+from uuid import uuid4
+
+import psycopg
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+import app.auth.auth as auth_module
+
+PASSWORD = "secret-password-123"
+
+
+@pytest.fixture
+def database_url():
+    url = os.getenv("TEST_DATABASE_URL")
+    if not url:
+        pytest.skip("Set TEST_DATABASE_URL to run PostgreSQL integration tests")
+    return url
+
+
+@pytest.fixture
+def client(database_url):
+    with TestClient(create_app(database_url=database_url, secret_key="test-secret")) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def registered_email(client, database_url):
+    email = f"buyer-{uuid4().hex}@example.com"
+    client.post("/api/auth/register", json={"email": email, "password": PASSWORD})
+
+● Update(backend\tests\test_login.py)
+Added 16 lines
+    assert unknown.json() == wrong_password.json()
+
+
+def test_login_hashes_even_for_an_unknown_email(client, monkeypatch):
+    """Skipping the slow hash for unknown emails would leak which emails exist via timing."""
+    calls = []
+    real_verify = auth_module.verify_password
+
+    def spy(password, stored_hash):
+        calls.append(stored_hash)
+        return real_verify(password, stored_hash)
+
+    monkeypatch.setattr(auth_module, "verify_password", spy)
+
+    client.post("/api/auth/login", json={"email": "nobody@example.com", "password": PASSWORD})
+
+    assert len(calls) == 1
+
+
+def test_login_requires_a_valid_email_format(client):
+    response = client.post("/api/auth/login", json={"email": "not-an-email", "password": PASSWORD})
+
+
+● Update(backend\tests\test_postgres_auth.py)
+Added 1 line, removed 1 line
+
+    email = f"buyer-{uuid4().hex}@example.com"
+    try:
+        with TestClient(create_app(database_url=database_url, secret_key="test-secret")) as client:
+        with TestClient(create_app(database_url=database_url, secret_key=TEST_SECRET)) as client:
+            response = client.post(
+                "/api/auth/register",
+                json={"email": email, "password": "secret-password-123"},
+
+● Update(backend\tests\test_postgres_auth.py)
+Added 2 lines
+import pytest
+from fastapi.testclient import TestClient
+
+from tests.conftest import TEST_SECRET
+
+def test_registration_persists_user_in_postgres():
+    from app.main import create_app
+
+
+  Ran 1 shell command
+
+Red confirmed (app.db is missing). I'm committing the tests, then moving on to the implementation.
+
+  Ran 1 shell command
+
+● Write(backend\app\db.py)
+Wrote 19 lines to backend\app\db.py
+"""Database schema bootstrap."""
+
+import psycopg
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+… +9 lines
+
+● Write(backend\app\main.py)
+Added 10 lines, removed 1 line
+"""FastAPI application entry point."""
+
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.auth.auth import router as auth_router
+from app.db import create_schema
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    if application.state.database_url:
+        create_schema(application.state.database_url)
+    yield
+
+
+def create_app(database_url: str | None = None, secret_key: str | None = None) -> FastAPI:
+    application = FastAPI(title="Car Dealership Inventory System")
+    application = FastAPI(title="Car Dealership Inventory System", lifespan=lifespan)
+    application.state.database_url = database_url or os.getenv("DATABASE_URL")
+    application.state.secret_key = secret_key or os.getenv("JWT_SECRET_KEY")
+    application.include_router(auth_router)
+
+● Update(backend\app\auth\auth.py)
+Added 3 lines, removed 1 line
+            (str(payload.email).lower(),),
+        ).fetchone()
+
+    if user is None or not verify_password(payload.password, user[1]):
+    # Always run the slow hash so response time doesn't reveal unknown emails.
+    stored_hash = user[1] if user else _DUMMY_HASH
+    if not verify_password(payload.password, stored_hash) or user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return TokenResponse(access_token=create_access_token(str(user[0]), user[2], secret_key))
+
+● Update(backend\app\auth\auth.py)
+Added 2 lines
+
+router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+_DUMMY_HASH = hash_password("timing-equaliser-not-a-real-password")
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+
+● Update(backend\app\auth\auth.py)
+Added 2 lines, removed 1 line
+
+    # Always run the slow hash so response time doesn't reveal unknown emails.
+    stored_hash = user[1] if user else _DUMMY_HASH
+    if not verify_password(payload.password, stored_hash) or user is None:
+    password_ok = verify_password(payload.password, stored_hash)
+    if user is None or not password_ok:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return TokenResponse(access_token=create_access_token(str(user[0]), user[2], secret_key))
+
+  Ran 1 shell command
+
+● Update(README.md)
+Added 10 lines, removed 1 line
+
+The API runs at http://localhost:8000 and interactive docs are at http://localhost:8000/docs.
+
+The app creates its tables on startup (`app/db.py`), so you only need to create the empty databases once:
+
+```bash
+createdb -U postgres car_dealership
+createdb -U postgres car_dealership_test
+```
+
+## Running tests
+
+```bash
+cd backend
+# Set TEST_DATABASE_URL to your dedicated PostgreSQL test database first.
+# Point TEST_DATABASE_URL at the dedicated test database (never your real one).
+# PowerShell: $env:TEST_DATABASE_URL = "postgresql://postgres:<password>@localhost:5432/car_dealership_test"
+pytest
+```
+
+Unit tests (password hashing, JWT) always run. Tests that need PostgreSQL are skipped when `TEST_DATABASE_URL` is not set.
+
+## Frontend setup
+
+Coming soon.
+
+  Ran 3 shell commands
+
+I fixed issues 2–5 and did everything for issue 1 except run the database tests: Postgres needs your password and I don't have it. With no database: 10 tests pass, 12 are skipped. Both new commits are pushed.
+
+Commits:
+- 90c4815 (Red, tests):
+  - New tests/conftest.py with shared fixtures and a 32+ byte test secret.
+  - New tests/test_schema.py: the users table is created, the setup can safely run twice, and role only accepts user or admin.
+  - A login test checking that an unknown email still runs the password hash.
+  - A test for an unknown hash algorithm.
+- 5230209 (Green, code):
+  - New app/db.py creates the users table (unique email, role check) every time the app starts.
+  - Login always runs the slow password check, using a dummy hash when the email doesn't exist.
+  - The README now covers creating the databases and setting TEST_DATABASE_URL.
+  - The PROMTS.md → PROMPTS.md rename ended up in this commit too, not in a separate one.
+
+Issues fixed:
+- 2: security.py now has 100% test coverage.
+- 3: The short-key JWT warnings are gone. The one warning left is an unrelated httpx deprecation notice.
+- 4: The timing leak is fixed. The test for it is one of the skipped database tests, so it hasn't run yet.
+- 5: The file is renamed to PROMPTS.md.
+
+To finish issue 1, run these with your Postgres password in place of YOURPASS:
+! & "C:\Program Files\PostgreSQL\18\bin\createdb.exe" -U postgres -h localhost car_dealership_test
+! cd backend; $env:TEST_DATABASE_URL="postgresql://postgres:YOURPASS@localhost:5432/car_dealership_test"; .\.venv\Scripts\python -m pytest -q
+The first command asks for the password. Once those run, I'll fix anything that fails among the 12 skipped tests, which are the first real test of registration and login against Postgres.
+
+✻ Cooked for 2m 12s · done 8:12 PM
+
+❯ password is <redacted> for the postgres
+
+A database doesn't have its own password. You log in as the postgres user, so <redacted> covers both. I'll create the test database and run the tests. The password goes only into this shell session, not into any file.
+
+  Ran 1 shell command
+
+Both databases already exist. Running the full suite against the test database:
+
+  Ran 1 shell command
+
+21 of the 22 tests pass. The one failure is a real finding, so let me look at the existing table:
+
+  Ran 1 shell command
+
+Found it: pre-existing users tables from the archived v1 project caused CREATE TABLE IF NOT EXISTS to skip adding the role check. I'll delete the test superuser row and update the schema to apply the constraint to existing tables too.
+
+● Update(backend\app\db.py)
+Added 8 lines
+    role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Tables created before this check existed won't get it from CREATE TABLE IF NOT EXISTS.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check') THEN
+        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'));
+    END IF;
+END $$;
+"""
+
+
+
+● Update(backend\tests\test_schema.py)
+Added 9 lines, removed 5 lines
+
+
+def test_users_role_is_limited_to_user_or_admin(client, database_url):
+    with pytest.raises(psycopg.errors.CheckViolation):
+    try:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            with psycopg.connect(database_url) as connection:
+                connection.execute(
+                    "INSERT INTO users (id, email, password_hash, role) "
+                    "VALUES (gen_random_uuid(), 'bad-role@example.com', 'x', 'superuser')"
+                )
+    finally:
+        with psycopg.connect(database_url) as connection:
+            connection.execute(
+                "INSERT INTO users (id, email, password_hash, role) "
+                "VALUES (gen_random_uuid(), 'bad-role@example.com', 'x', 'superuser')"
+            )
+            connection.execute("DELETE FROM users WHERE email = 'bad-role@example.com'")
+
+  Ran 1 shell command
+
+All 22 pass. I'll check that the tests left no rows behind, then commit:
+
+  Ran 1 shell command
+
+All five issues are fixed: the full suite now passes against real PostgreSQL, 22 of 22, with 98% coverage. The fix is pushed as b6252b7.
+
+What running against the real database turned up:
+- Registration, login, duplicate-email 409, the timing fix and the schema tests all work against Postgres.
+- One test failed at first, and it found a real bug. Your old v1 project had already created a users table in both databases. CREATE TABLE IF NOT EXISTS saw that table and skipped it, so the rule that role must be user or admin was never added. The schema now adds that rule to existing tables too.
+- That failing test had also left a fake superuser row in the test database. I deleted it and made the test clean up after itself. The test database has 0 users now.
+
+The only lines not covered are the two 503 not configured branches in auth.py.
+
+To run the database tests yourself (each new terminal needs this again):
+cd backend
+$env:TEST_DATABASE_URL = "postgresql://postgres:<redacted>@localhost:5432/car_dealership_test"
+pytest
+The password is only in that command, not in any file in the repo. Since you've now shared it in this chat, consider changing it before you deploy anywhere.
+
+Next up: a get_current_user / require_admin check that reads the JWT and guards routes, then the vehicle tests (vehicles table, CRUD, search, purchase, restock). Want to write the vehicle tests yourself, or should I do the auth check first?
+
+✻ Baked for 1m 30s · done 8:18 PM
+
+※ recap: You're building the car dealership kata, and login and JWT auth now pass all 22 tests against real Postgres. Next is adding the JWT and admin check that protects routes, then the vehicle tests; tell me whether you'll write the vehicle tests yourself.
