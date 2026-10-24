@@ -92,3 +92,69 @@ The next step is for you to write the first failing test for POST /api/auth/regi
 
 
 
+
+
+so now, for the next part, create and push testcases
+
+
+
+&#x20; Ran 3 shell commands
+
+
+
+That's the expected Red result. Next I'll commit and push.
+
+
+
+&#x20; Pushed to main
+
+
+
+I picked login and JWT as the next piece. The tests are written and pushed as commit 865b48c. It's the Red step, so they currently fail.
+
+
+
+backend/tests/test\_security.py (8 unit tests, no database needed)
+
+\- The password hash verifies the right password and rejects a wrong one.
+
+\- Hashes are salted, and a malformed hash returns False.
+
+\- A JWT round-trips sub and role and carries an exp.
+
+\- Tokens signed with another secret, expired tokens and garbage tokens all raise InvalidTokenError.
+
+
+
+These fail on collection with ModuleNotFoundError: app.security, which is the expected Red.
+
+
+
+backend/tests/test\_login.py (6 database tests; they skip without TEST\_DATABASE\_URL)
+
+\- Valid credentials return 200 with a bearer access\_token.
+
+\- Login is case-insensitive on the email.
+
+\- A wrong password returns 401.
+
+\- Unknown email and wrong password return an identical 401 body, so the endpoint doesn't reveal which emails exist.
+
+\- A bad email format returns 422.
+
+\- Registering a duplicate email returns 409. Today that would be a 500.
+
+
+
+To go Green, someone needs to:
+
+1\. Create app/security.py with hash\_password, verify\_password, create\_access\_token, decode\_access\_token and InvalidTokenError. Move hash\_password out of auth.py.
+
+2\. Add PyJWT to requirements.txt and install it.
+
+3\. Add POST /api/auth/login and the 409 handling.
+
+4\. Add the users table. I couldn't run the database tests because I don't have your Postgres credentials, so I haven't verified that they fail for the right reason.
+
+
+
