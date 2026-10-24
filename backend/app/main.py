@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from app.auth.auth import router as auth_router
 from app.db import create_schema
+from app.vehicles import router as vehicles_router
 
 
 @asynccontextmanager
@@ -21,6 +22,7 @@ def create_app(database_url: str | None = None, secret_key: str | None = None) -
     application.state.database_url = database_url or os.getenv("DATABASE_URL")
     application.state.secret_key = secret_key or os.getenv("JWT_SECRET_KEY")
     application.include_router(auth_router)
+    application.include_router(vehicles_router)
 
     @application.get("/api/health")
     def health() -> dict[str, str]:

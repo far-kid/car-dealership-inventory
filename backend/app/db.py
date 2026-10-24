@@ -18,6 +18,15 @@ BEGIN
         ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'));
     END IF;
 END $$;
+
+CREATE TABLE IF NOT EXISTS vehicles (
+    id UUID PRIMARY KEY,
+    make TEXT NOT NULL,
+    model TEXT NOT NULL,
+    category TEXT NOT NULL,
+    price INTEGER NOT NULL CHECK (price > 0),
+    quantity INTEGER NOT NULL CHECK (quantity >= 0)
+);
 """
 
 
