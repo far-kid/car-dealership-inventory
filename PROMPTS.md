@@ -481,7 +481,7 @@ The first command asks for the password. Once those run, I'll fix anything that 
 
 ✻ Cooked for 2m 12s · done 8:12 PM
 
-❯ password is <redacted> for the postgres
+❯ password is <redacted> for the postgres 
 
 A database doesn't have its own password. You log in as the postgres user, so <redacted> covers both. I'll create the test database and run the tests. The password goes only into this shell session, not into any file.
 
@@ -561,3 +561,302 @@ Next up: a get_current_user / require_admin check that reads the JWT and guards 
 ✻ Baked for 1m 30s · done 8:18 PM
 
 ※ recap: You're building the car dealership kata, and login and JWT auth now pass all 22 tests against real Postgres. Next is adding the JWT and admin check that protects routes, then the vehicle tests; tell me whether you'll write the vehicle tests yourself.
+ okay now write tests for me to cover
+
+I'll write the Red tests for the next slice: the JWT route guard, vehicle CRUD, search, and purchase/restock. Shared fixtures go in conftest.py first:
+
+● Write(backend\tests\conftest.py)
+Added 52 lines
+"""Shared fixtures for the PostgreSQL integration tests."""
+
+import os
+from uuid import uuid4
+
+import psycopg
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+from app.security import create_access_token
+
+# HS256 keys should be at least 32 bytes (RFC 7518 section 3.2).
+TEST_SECRET = "test-secret-key-that-is-at-least-32-bytes-long"
+
+VEHICLE = {
+    "make": "Toyota",
+    "model": "Corolla",
+    "category": "Sedan",
+    "price": 25000,
+    "quantity": 3,
+}
+
+
+def bearer(role: str, secret: str = TEST_SECRET, **token_options) -> dict[str, str]:
+    token = create_access_token(str(uuid4()), role, secret, **token_options)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def database_url():
+    url = os.getenv("TEST_DATABASE_URL")
+
+def client(database_url):
+    with TestClient(create_app(database_url=database_url, secret_key=TEST_SECRET)) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def user_headers():
+    return bearer("user")
+
+
+@pytest.fixture
+def admin_headers():
+    return bearer("admin")
+
+
+def _clear_vehicles(database_url: str) -> None:
+    with psycopg.connect(database_url) as connection:
+        if connection.execute("SELECT to_regclass('vehicles')").fetchone()[0]:
+            connection.execute("DELETE FROM vehicles")
+
+
+@pytest.fixture
+def vehicles_client(client, database_url):
+    """A client whose vehicles table starts and ends empty."""
+    _clear_vehicles(database_url)
+    yield client
+    _clear_vehicles(database_url)
+
+
+@pytest.fixture
+def create_vehicle(vehicles_client, admin_headers):
+    def _create(**overrides) -> dict:
+        response = vehicles_client.post(
+            "/api/vehicles", json={**VEHICLE, **overrides}, headers=admin_headers
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    return _create
+
+● Write(backend\tests\test_vehicle_auth.py)
+Wrote 76 lines to backend\tests\test_vehicle_auth.py
+"""Every vehicle endpoint is protected by a JWT bearer token."""
+
+from datetime import timedelta
+from uuid import uuid4
+
+import pytest
+
+from tests.conftest import bearer
+
+SOME_ID = uuid4()
+… +66 lines
+
+● Update(backend\tests\test_vehicle_auth.py)
+Removed 2 lines
+            "/api/vehicles", headers={"Authorization": f"Bearer {token}"}
+        )
+    finally:
+        import psycopg
+
+        with psycopg.connect(database_url) as connection:
+            connection.execute("DELETE FROM users WHERE email = %s", (email,))
+
+
+● Update(backend\tests\test_vehicle_auth.py)
+Added 1 line
+from datetime import timedelta
+from uuid import uuid4
+
+import psycopg
+import pytest
+
+from tests.conftest import bearer
+
+● Write(backend\tests\test_vehicles.py)
+Wrote 201 lines to backend\tests\test_vehicles.py
+"""Vehicle CRUD and search."""
+
+from uuid import uuid4
+
+import pytest
+
+from tests.conftest import VEHICLE
+
+# --- create -----------------------------------------------------------------
+… +191 lines
+
+● Write(backend\tests\test_inventory.py)
+Wrote 122 lines to backend\tests\test_inventory.py
+"""Purchasing and restocking stock."""
+
+from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
+
+import pytest
+
+
+def quantity_of(client, headers, vehicle_id) -> int:
+    vehicles = client.get("/api/vehicles", headers=headers).json()
+… +112 lines
+
+Next I'll run them to confirm they fail for the right reasons, meaning missing routes and not bugs in the tests:
+
+  Ran 1 shell command
+
+52 of the 56 new tests fail as expected, with only 4 "unknown vehicle 404" tests passing by accident since the routes don't exist yet. To verify the tests themselves are bug-free, I'll run them against a throwaway scratch implementation that won't be added to your repo.
+
+  Ran 2 shell commands
+
+All 78 tests pass against the throwaway version. Since that run left behind a vehicles table that would silently cause your schema's IF NOT EXISTS to be skipped, I'm dropping that table and removing the scratch copy.
+
+  Ran 1 shell command
+
+PROMPTS.md has edits from you, so I'm leaving it out and committing only the tests:
+
+  Ran 1 shell command
+
+The vehicle tests are written and pushed as 2755e44. 52 of the 56 new tests fail, which is the Red step. The other 4 are "unknown vehicle returns 404" tests that pass by accident because the routes don't exist yet. To check the tests themselves have no bugs, I ran them against a throwaway implementation in a scratch folder: all 78 passed. I've deleted that copy and dropped the vehicles table it created, so you start from a clean database. Your PROMPTS.md edits are still uncommitted.
+
+What the tests expect:
+
+File: tests/test_vehicle_auth.py
+Tests: All 7 vehicle routes return 401 without a token, with a non-Bearer header, a wrong-secret token, or an expired token. A token from /login works.
+────────────────────────────────────────
+File: tests/test_vehicles.py
+Tests: Create: 201 with an id. 422 for an empty make, model or category, a price of 0 or less, a negative or fractional quantity, or any missing field.
+List: returns every vehicle, [] when there are none. Search: make and model match case-insensitively on part of the name, category matches
+case-insensitively on the whole word, and min_price/max_price are inclusive and can be combined. A minimum above the maximum returns 422. Update  (PUT):
+replaces all fields; 404 for an unknown id, 422 for bad data or a malformed id. Delete: admin gets 204, a regular user gets 403, an unknown id gets 404.
+────────────────────────────────────────
+File: tests/test_inventory.py
+Tests: Purchase: takes 1 off the quantity and returns the vehicle; 409 when stock is 0; 404 for an unknown id. 8 simultaneous purchases with stock of 3
+must give exactly three 200s and five 409s. Restock: admin only (403 for a regular user), body {"quantity": n} with n a positive whole number, otherwise
+422. Restocking makes a sold-out car buyable again.
+
+Things that will catch you out when you implement it:
+1. Return price as a JSON number (25000.0), not a string. Pydantic sends Decimal as "25000.00", which fails the comparisons. Use price: float in the response model, even if the database column is NUMERIC.
+2. The concurrency test needs a single atomic update: UPDATE vehicles SET quantity = quantity - 1 WHERE id = %s AND quantity > 0 RETURNING .... If that returns no row, check whether the vehicle exists to choose between 404 and 409. Reading the quantity first and then updating it will fail the test.
+3. A missing token must give 401. FastAPI's HTTPBearer can return 403 for this. Use HTTPBearer(auto_error=False) and raise the 401 yourself.
+4. The token's role claim decides admin access. require_admin should return 403 when role != "admin".
+5. Add the vehicles table to app/db.py. The tests clear vehicle rows before and after each test.
+
+Per the kata spec, create and update work for any logged-in user, and only delete and restock are admin-only. Tell me if you'd rather lock create and update to admins as well.
+
+Once you've implemented it, run the suite with TEST_DATABASE_URL set as before and I'll review your Green commit.
+
+
+
+
+❯ now add more testcases for the next part
+
+  Ran 2 shell commands
+
+All 78 tests pass with 98% coverage—commit this now before new tests arrive, to preserve the clean Red/Green history. Next up is the backend work supporting the frdening.
+
+● Write(backend\tests\test_admin.py)
+Wrote 93 lines to backend\tests\test_admin.py
+"""Bootstrapping admins, and making se."""
+
+from uuid import uuid4
+
+import psycopg
+import pytest
+
+from app.admin import ensure_admin
+from app.security import decode_acces
+from tests.conftest import TEST_SECRET
+… +83 lines
+
+● Write(backend\tests\test_me.py)
+Wrote 66 lines to backend\tests\test_me.py
+"""GET /api/auth/me tells the frontenr to show admin forms."""
+
+from uuid import uuid4
+
+import psycopg
+import pytest
+
+from app.admin import ensure_admin
+
+PASSWORD = "secret-password-123"
+… +56 lines
+                                                                                                                 Write(backend\tests\test_cors.py)
+Wrote 56 lines to backend\tests\test_cors.py                                                                """The React dev server runs on anotheow it (and only it)."""
+                                                                                                         import pytest
+from fastapi.testclient import TestClient                                                                
+from app.main import create_app                                                                          
+VITE_DEV_SERVER = "http://localhost:5173"                                                                
+… +46 lines                                                                                                 
+● Write(backend\tests\test_input_hardening.py)                                                                   Wrote 60 lines to backend\tests\test_inpu
+"""Edge cases in user input that the happy-path tests don't reach."""                                   
+import pytest                                                                                           
+from tests.conftest import VEHICLE                                                                      
+                                                                                                        @pytest.mark.parametrize("field", ["m
+def test_whitespace_only_text_fields_are_rejected(vehicles_client, user_headers, field):                    response = vehicles_client.post(
+
+import pytest
+
+from tests.conftest import VEHICLE
+
+
+@pytest.mark.parametrize("field", ["make", "model", "category"])
+def test_whitespace_only_text_fields_are_rejected(vehicles_client, user_headers, field):                    response = vehicles_client.post(
+… +50 lines                                                                                                 
+Running them to check they fail for the right reasons:                                                         
+  Ran 2 shell commands                                                                                           
+All the new tests fail as expected, apart from three that already pass. I haven't committed them. Your vehicle implementation is still uncommitted, and theen commit before the next Red one.
+
+New tests (40 in total):
+
+File: tests/test_admin.py
+What it requires: A new app/admin.py exposing ensure_admin(database_url, email, password). It creates an admin, or
+promotes an existing user while keeping theiis harmless, and email case doesn't matter.
+Sending "role": "admin" to /register must still create a normal user. An admin who logs in can delete a vehicle.
+────────────────────────────────────────
+File: tests/test_me.py
+What it requires: GET /api/auth/me returns {e hash. It returns 401 without a token, and
+also 401 if the user was deleted after the token was issued, so it has to check the database. The frontend uses role
+to decide whether to show the admin forms.
+────────────────────────────────────────
+File: tests/test_cors.py
+What it requires: http://localhost:5173 (Vite) is allowed by default, including the Authorization header. Unknown
+origins get no CORS header. A CORS_ORIGINS eaces the default.
+────────────────────────────────────────
+File: tests/test_input_hardening.py
+What it requires: Whitespace-only make, model or category returns 422. Those fields are trimmed and capped at 100
+characters. Register caps passwords at 128 c
+
+Already passing (kept to guard existing behalocked, a price sent as a string is rejected, and passwords under 8 characters are rejected.
+
+Hints for the Green step:
+- CORS: use CORSMiddleware in create_app and", "http://localhost:5173"). Split on commasand strip the spaces.
+- Trimming: Annotated[str, StringConstraintsength=1, max_length=100)].
+- Admin setup: a small CLI, e.g. python -m app.admin you@example.com, which asks for the password with getpass, makes
+  the first admin easy to create and to docutested.
+
+Unlike last time, I didn't check these again. If one looks wrong once you'reimplementing, tell me.
+
+Order:
+1. Commit your vehicle code (app/vehicles.pyb.py, main.py). Your commit, no trailer.
+2. Tell me, and I'll commit and push these tests as the next Red commit.
+3. You implement the Green.
+
+✻ Brewed for 2m 58s · done 9:53 PM
+
+※ recap: We're building the backend for your cvehicle code passes all 78 tests but is still uncommitted. Commit it, then tell me and I'll push the 40 new tests for admin setup, /me, CORS and input checks.
+
+❯ okay commit the tests
+
+  Ran 1 shell command                                                                                                 
+Your vehicle code is still uncommitted, so I'm committing only the four test files and leaving your changes alone:  
+  Ran 1 shell command                                                                                                 
+I committed and pushed the four new test files as 3f7f658. That's all I committed. Your vehicle code and PROMPTS.md are still uncommitted.
+
+On GitHub, that leaves two test commits in aentation not yet there. Commit it now so itcomes straight after:
+
+git add backend/app/vehicles.py backend/app/auth/dependencies.py backend/app/db.py backend/app/main.py
+git commit -m "feat: add protected vehicle Ctock"
+git push
