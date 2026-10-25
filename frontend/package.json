@@ -11,7 +11,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "format": "prettier --write src e2e vite.config.ts playwright.config.ts index.html package.json .prettierrc.json",
+    "format:check": "prettier --check src e2e vite.config.ts playwright.config.ts index.html package.json .prettierrc.json"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -35,6 +37,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "@vitest/coverage-v8": "5.0.5",
     "jsdom": "30.1.3",
+    "prettier": "3.9.10",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vite": "8.3.5",

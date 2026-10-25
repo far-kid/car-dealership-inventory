@@ -22,8 +22,16 @@ async function login(page: Page, email = adminEmail) {
 }
 
 async function audit(page: Page) {
-  const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
-  return result.violations.map(violation => ({ id: violation.id, elements: violation.nodes.map(node => ({ target: node.target, problem: node.failureSummary })) }))
+  const result = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
+    .analyze()
+  return result.violations.map((violation) => ({
+    id: violation.id,
+    elements: violation.nodes.map((node) => ({
+      target: node.target,
+      problem: node.failureSummary,
+    })),
+  }))
 }
 
 test.beforeEach(async ({ request }) => {
@@ -32,21 +40,34 @@ test.beforeEach(async ({ request }) => {
   expect(auth.status()).toBe(200)
   const headers = { Authorization: `Bearer ${(await auth.json()).access_token}` }
   const current = await request.get('/api/vehicles', { headers })
-  for (const vehicle of await current.json()) expect((await request.delete(`/api/vehicles/${vehicle.id}`, { headers })).ok()).toBeTruthy()
-  for (const vehicle of catalogue) expect((await request.post('/api/vehicles', { headers, data: vehicle })).ok()).toBeTruthy()
+  for (const vehicle of await current.json())
+    expect((await request.delete(`/api/vehicles/${vehicle.id}`, { headers })).ok()).toBeTruthy()
+  for (const vehicle of catalogue)
+    expect((await request.post('/api/vehicles', { headers, data: vehicle })).ok()).toBeTruthy()
 })
 
 test('login and inventory are accessible and fit the viewport', async ({ page }, testInfo) => {
   const errors: string[] = []
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible()
   await page.screenshot({ path: `test-results/login-${testInfo.project.name}.png`, fullPage: true })
   const loginIssues = await audit(page)
   await login(page)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
-  await page.screenshot({ path: `test-results/inventory-${testInfo.project.name}.png`, fullPage: true })
-  expect([...loginIssues, ...await audit(page)]).toEqual([])
+  await page.screenshot({
+    path: `test-results/inventory-${testInfo.project.name}.png`,
+    fullPage: true,
+  })
+  expect([...loginIssues, ...(await audit(page))]).toEqual([])
+  if (testInfo.project.name === 'desktop') {
+    for (const width of [320, 768]) {
+      await page.setViewportSize({ width, height: 900 })
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      ).toBeTruthy()
+    }
+  }
   expect(errors).toEqual([])
 })
 
@@ -83,7 +104,9 @@ test('admin edits persist across reload, restock and delete', async ({ page }) =
   await expect(page.getByRole('article')).toHaveCount(6)
 })
 
-test('registers a buyer, filters inventory and purchases the last unit', async ({ page }, testInfo) => {
+test('registers a buyer, filters inventory and purchases the last unit', async ({
+  page,
+}, testInfo) => {
   const email = `buyer-${Date.now()}-${testInfo.project.name}@motorway.example.com`
   await page.goto('/')
   await page.getByRole('button', { name: 'Create an account' }).click()
@@ -106,10 +129,19 @@ test('registers a buyer, filters inventory and purchases the last unit', async (
     await page.getByRole('button', { name: 'Confirm purchase' }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
   }
-  await expect(page.getByRole('article', { name: 'Porsche 911 Carrera' }).getByRole('button', { name: 'Out of stock' })).toBeDisabled()
+  await expect(
+    page
+      .getByRole('article', { name: 'Porsche 911 Carrera' })
+      .getByRole('button', { name: 'Out of stock' }),
+  ).toBeDisabled()
   await page.reload()
-  await expect(page.getByRole('article', { name: 'Porsche 911 Carrera' }).getByRole('button', { name: 'Out of stock' })).toBeDisabled()
-  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await expect(
+    page
+      .getByRole('article', { name: 'Porsche 911 Carrera' })
+      .getByRole('button', { name: 'Out of stock' }),
+  ).toBeDisabled()
+  if (testInfo.project.name === 'mobile')
+    await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible()
 })
@@ -122,13 +154,53 @@ test('dialogs trap keyboard focus, close on Escape and restore the trigger', asy
   await expect(dialog).toBeVisible()
   for (let i = 0; i < 10; i++) {
     await page.keyboard.press('Tab')
-    expect(await dialog.evaluate(element => element.contains(document.activeElement))).toBeTruthy()
+    expect(
+      await dialog.evaluate((element) => element.contains(document.activeElement)),
+    ).toBeTruthy()
   }
   expect(await audit(page)).toEqual([])
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   await expect(trigger).toBeFocused()
   await page.getByRole('button', { name: 'List view' }).click()
-  await expect(page.getByRole('button', { name: 'List view' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'List view' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
+})
+
+test('dark mode follows the system, passes accessibility checks, and remembers a light override', async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(page.getByRole('button', { name: 'Switch to light mode' })).toBeVisible()
+  expect(await audit(page)).toEqual([])
+  await page.screenshot({
+    path: `test-results/login-dark-${testInfo.project.name}.png`,
+    fullPage: true,
+  })
+
+  await login(page)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  expect(await audit(page)).toEqual([])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy()
+  await page.screenshot({
+    path: `test-results/inventory-dark-${testInfo.project.name}.png`,
+    fullPage: true,
+  })
+
+  await page.getByRole('button', { name: 'Add vehicle', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  expect(await audit(page)).toEqual([])
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Switch to light mode' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible()
 })

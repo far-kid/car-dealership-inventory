@@ -1,5 +1,12 @@
-export interface User { id: string; email: string; role: string }
-export interface Credentials { email: string; password: string }
+export interface User {
+  id: string
+  email: string
+  role: string
+}
+export interface Credentials {
+  email: string
+  password: string
+}
 export interface VehicleInput {
   make: string
   model: string
@@ -7,7 +14,9 @@ export interface VehicleInput {
   price: number
   quantity: number
 }
-export interface Vehicle extends VehicleInput { id: string }
+export interface Vehicle extends VehicleInput {
+  id: string
+}
 export interface VehicleFilters {
   make?: string
   model?: string

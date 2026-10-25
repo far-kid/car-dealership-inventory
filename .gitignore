@@ -32,3 +32,6 @@ test-results/
 *.tsbuildinfo
 .env.local
 .env.*.local
+
+# Local scheduled release state and logs
+/.automation/

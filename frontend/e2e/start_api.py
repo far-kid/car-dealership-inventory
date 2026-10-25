@@ -25,4 +25,4 @@ import uvicorn
 create_schema(database_url)
 ensure_admin(database_url, "admin@motorway.example.com", password)
 app = create_app(database_url=database_url, secret_key="isolated-e2e-secret-never-use-in-production")
-uvicorn.run(app, host="127.0.0.1", port=8000)
+uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("E2E_API_PORT", "8000")))
